@@ -162,7 +162,7 @@ state_handlers.counting_down = function(player, frame, ctx)
 		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
 		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(remaining))
 		return "safe_zone"
-	elseif ctx.biome_changed then
+	elseif ctx.biome_changed and not ctx.is_backtrack then
 		-- Direct biome → biome: add bonus time to remaining
 		local bonus = get_setting("biome_bonus_seconds", 90)
 		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
@@ -183,8 +183,8 @@ state_handlers.overtime = function(player, frame, ctx)
 		return "overtime_safe"
 	end
 
-	-- Biome change during overtime = reprieve with bonus time
-	if ctx.biome_changed then
+	-- Biome change during overtime = reprieve with bonus time (new biomes only)
+	if ctx.biome_changed and not ctx.is_backtrack then
 		local bonus = get_setting("biome_bonus_seconds", 90)
 		GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
 		GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
