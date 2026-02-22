@@ -25,8 +25,8 @@ mod_settings =
 			{
 				id = "damage_start",
 				ui_name = "Starting curse damage",
-				ui_description = "HP lost on the first damage tick when the timer expires.",
-				value_default = 5,
+				ui_description = "HP lost per tick at 100 max HP. Scales with player max HP.",
+				value_default = 4,
 				value_min = 1,
 				value_max = 50,
 				value_display_multiplier = 1,

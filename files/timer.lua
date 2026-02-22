@@ -31,11 +31,30 @@ local function is_trackable_biome(biome_name)
 end
 
 -- Workshop detection: "workshop" entities only exist in HM interior
+-- Distance-gated so a surviving (non-collapsed) workshop doesn't trap the player in safe_zone
+local WORKSHOP_MAX_DIST_SQ = 300 * 300  -- ~300 px radius
+
 local function is_in_workshop(player)
 	local px, py = EntityGetTransform(player)
 	if px == nil then return false end
 	local workshop = EntityGetClosestWithTag(px, py, "workshop")
-	return workshop ~= nil and workshop ~= 0
+	if workshop == nil or workshop == 0 then return false end
+	local wx, wy = EntityGetTransform(workshop)
+	if wx == nil then return false end
+	local dx, dy = px - wx, py - wy
+	return (dx * dx + dy * dy) <= WORKSHOP_MAX_DIST_SQ
+end
+
+-- Workshop identity: unique key + Y position for direction detection
+local function get_workshop_key(player)
+	local px, py = EntityGetTransform(player)
+	if px == nil then return nil, nil end
+	local workshop = EntityGetClosestWithTag(px, py, "workshop")
+	if workshop == nil or workshop == 0 then return nil, nil end
+	local wx, wy = EntityGetTransform(workshop)
+	if wx == nil then return nil, nil end
+	local key = tostring(math.floor(wx / 10)) .. "_" .. tostring(math.floor(wy / 10))
+	return key, wy
 end
 
 -- Visited biomes: comma-separated string in Globals
@@ -72,6 +91,7 @@ local function build_context(player, frame)
 		frame = frame,
 		raw_biome = raw_biome,
 		in_workshop = is_in_workshop(player),
+		in_holy_mountain = is_holy_mountain(raw_biome),
 		is_trackable = is_trackable_biome(raw_biome),
 		biome_changed = false,
 		new_biome = nil,
@@ -86,9 +106,6 @@ end
 
 local function handle_biome_transition(ctx)
 	GlobalsSetValue("NOITREIGN_RAW_BIOME", ctx.raw_biome)
-
-	-- DEBUG: remove once biome names are confirmed
-	GamePrint("BIOME: [" .. ctx.raw_biome .. "]")
 
 	-- Debounce: require DEBOUNCE_FRAMES consecutive frames in the same biome
 	local debounce_biome = GlobalsGetValue("NOITREIGN_DEBOUNCE_BIOME", "")
@@ -161,6 +178,10 @@ state_handlers.counting_down = function(player, frame, ctx)
 		-- Freeze timer: snapshot remaining as new budget
 		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
 		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(remaining))
+		-- Store workshop identity for rewards + direction detection
+		local wk, wy = get_workshop_key(player)
+		GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_KEY", wk or "")
+		GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_Y", tostring(wy or 0))
 		return "safe_zone"
 	elseif ctx.biome_changed and not ctx.is_backtrack then
 		-- Direct biome → biome: add bonus time to remaining
@@ -180,6 +201,9 @@ state_handlers.overtime = function(player, frame, ctx)
 
 	-- Workshop = pause damage
 	if ctx.in_workshop then
+		local wk, wy = get_workshop_key(player)
+		GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_KEY", wk or "")
+		GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_Y", tostring(wy or 0))
 		return "overtime_safe"
 	end
 
@@ -198,19 +222,25 @@ state_handlers.overtime = function(player, frame, ctx)
 	local last_damage_frame = tonumber(GlobalsGetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")) or 0
 
 	if last_damage_frame == 0 or (frame - last_damage_frame) >= damage_interval then
-		local base_damage = get_setting("damage_start", 5)
-		local escalation = get_setting("damage_escalation", 2)
+		local damagemodels = EntityGetComponent(player, "DamageModelComponent")
+		local max_hp = 4  -- default: 100 display HP / 25
+		if damagemodels ~= nil then
+			max_hp = ComponentGetValue2(damagemodels[1], "max_hp")
+		end
+
+		local base_damage = get_setting("damage_start", 4)  -- display HP at 100 max
+		local escalation = get_setting("damage_escalation", 1)
 		local ticks = tonumber(GlobalsGetValue("NOITREIGN_DAMAGE_TICKS", "0")) or 0
 
 		local damage = base_damage * escalation
-		local internal_damage = damage / 25.0  -- Noita HP = display / 25
+		local internal_damage = (damage / 100.0) * max_hp  -- scale relative to max HP
 
 		local x, y = EntityGetTransform(player)
 		EntityInflictDamage(
 			player,
 			internal_damage,
 			"DAMAGE_CURSE",
-			"The biome is rejecting you!",
+			"Get out quick!",
 			"NONE",
 			0, 0,
 			player,
@@ -226,33 +256,77 @@ state_handlers.overtime = function(player, frame, ctx)
 end
 
 state_handlers.safe_zone = function(player, frame, ctx)
-	-- Timer frozen. Stay here until a biome transition confirms the next level.
-	-- This covers the gap between the workshop and the next biome.
-	if ctx.biome_changed then
-		-- Leaving HM into new biome: full timer reset
-		local timer_seconds = get_setting("timer_seconds", 180)
+	-- Stay safe while in workshop or anywhere in HM biome area (covers exit gap)
+	if ctx.in_workshop or ctx.in_holy_mountain then
+		return "safe_zone"
+	end
+
+	-- Player left HM area — determine direction via Y comparison
+	local workshop_y = tonumber(GlobalsGetValue("NOITREIGN_CURRENT_WORKSHOP_Y", "0")) or 0
+	local _, py = EntityGetTransform(player)
+	local went_forward = (py or 0) > workshop_y
+
+	-- Immediate biome check (don't wait for debounce) to detect new vs same biome
+	local level_biome = GlobalsGetValue("NOITREIGN_LEVEL_BIOME", "")
+	local is_new_biome = ctx.is_trackable and ctx.raw_biome ~= level_biome
+
+	if went_forward then
+		if is_new_biome then
+			-- New biome below: full timer reset
+			local timer_seconds = get_setting("timer_seconds", 180)
+			GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
+			GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(timer_seconds))
+			GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
+			GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
+			-- Update level biome now so debounced transition doesn't double-grant
+			GlobalsSetValue("NOITREIGN_LEVEL_BIOME", ctx.raw_biome)
+			add_visited_biome(ctx.raw_biome)
+			return "counting_down"
+		end
+		-- Same biome (wand edit roundtrip): resume from frozen
 		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
-		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(timer_seconds))
+		return "counting_down"
+	else
+		-- Went upward: backtrack penalty → overtime
+		GlobalsSetValue("NOITREIGN_REMAINING_SECONDS", "0")
 		GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
 		GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
-		return "counting_down"
+		return "overtime"
 	end
-	return "safe_zone"
 end
 
 state_handlers.overtime_safe = function(player, frame, ctx)
-	-- Damage paused. Stay here until a biome transition.
 	GlobalsSetValue("NOITREIGN_REMAINING_SECONDS", "0")
-	if ctx.biome_changed then
-		-- Leaving HM into new biome: full timer reset
+
+	-- Stay safe while in workshop or HM biome area
+	if ctx.in_workshop or ctx.in_holy_mountain then
+		return "overtime_safe"
+	end
+
+	-- Left HM area — check direction
+	local workshop_y = tonumber(GlobalsGetValue("NOITREIGN_CURRENT_WORKSHOP_Y", "0")) or 0
+	local _, py = EntityGetTransform(player)
+	local went_forward = (py or 0) > workshop_y
+
+	-- Immediate biome check (don't wait for debounce)
+	local level_biome = GlobalsGetValue("NOITREIGN_LEVEL_BIOME", "")
+	local is_new_biome = ctx.is_trackable and ctx.raw_biome ~= level_biome
+
+	if went_forward and is_new_biome then
+		-- New biome: full timer reset
 		local timer_seconds = get_setting("timer_seconds", 180)
 		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
 		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(timer_seconds))
 		GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
 		GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
+		-- Update level biome now so debounced transition doesn't double-grant
+		GlobalsSetValue("NOITREIGN_LEVEL_BIOME", ctx.raw_biome)
+		add_visited_biome(ctx.raw_biome)
 		return "counting_down"
 	end
-	return "overtime_safe"
+
+	-- All other exits: resume overtime damage
+	return "overtime"
 end
 
 -- ============================================================
@@ -274,6 +348,8 @@ function noitreign_timer_init(player)
 	GlobalsSetValue("NOITREIGN_DEBOUNCE_BIOME", "")
 	GlobalsSetValue("NOITREIGN_DEBOUNCE_COUNT", "0")
 	GlobalsSetValue("NOITREIGN_VISITED_BIOMES", "")
+	GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_KEY", "")
+	GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_Y", "0")
 end
 
 -- ============================================================
@@ -297,7 +373,13 @@ function noitreign_timer_update(player)
 	local state = GlobalsGetValue("NOITREIGN_STATE", "counting_down")
 	local ctx = build_context(player, frame)
 
-	handle_biome_transition(ctx)
+	-- Skip biome transition tracking in safe states — the safe_zone/overtime_safe
+	-- handlers do their own immediate biome detection on exit. Running it here would
+	-- let the debounce update NOITREIGN_LEVEL_BIOME while still in safe_zone
+	-- (e.g. when a non-collapsed workshop keeps is_in_workshop true into the next biome).
+	if state ~= "safe_zone" and state ~= "overtime_safe" then
+		handle_biome_transition(ctx)
+	end
 
 	local handler = state_handlers[state]
 	if handler == nil then handler = state_handlers.counting_down end

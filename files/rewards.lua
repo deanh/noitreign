@@ -59,14 +59,19 @@ end
 -- ============================================================
 -- Check: called every frame, grants rewards on HM entry
 -- ============================================================
+local granted_workshops = {}  -- Lua-local guard (immune to Globals timing issues)
+
 function noitreign_rewards_check(player)
 	local state = GlobalsGetValue("NOITREIGN_STATE", "counting_down")
 	if state ~= "safe_zone" and state ~= "overtime_safe" then return end
 
-	-- Guard: one reward per level (keyed to the current level biome)
-	local level_biome = GlobalsGetValue("NOITREIGN_LEVEL_BIOME", "")
-	local grant_key = "NOITREIGN_HM_GRANTED_" .. level_biome
+	-- Guard: one reward per holy mountain (keyed to workshop position)
+	local workshop_key = GlobalsGetValue("NOITREIGN_CURRENT_WORKSHOP_KEY", "")
+	if workshop_key == "" then return end
+	if granted_workshops[workshop_key] then return end
+	local grant_key = "NOITREIGN_HM_GRANTED_" .. workshop_key
 	if GlobalsGetValue(grant_key, "0") == "1" then return end
+	granted_workshops[workshop_key] = true
 	GlobalsSetValue(grant_key, "1")
 
 	-- HP Boost
