@@ -231,7 +231,7 @@ state_handlers.overtime = function(player, frame, ctx)
 		local base_damage = get_setting("damage_start", 4)  -- display HP at 100 max
 		local ticks = tonumber(GlobalsGetValue("NOITREIGN_DAMAGE_TICKS", "0")) or 0
 
-		local damage = base_damage * ((ticks // 10) + 1) 
+		local damage = base_damage * (math.floor(ticks / 10) + 1)
 		local internal_damage = (damage / 100.0) -- * max_hp  -- scale relative to max HP
 
 		local x, y = EntityGetTransform(player)
