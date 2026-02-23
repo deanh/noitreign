@@ -1,4 +1,4 @@
--- timer.lua — State machine for biome tracking, countdown, and escalating curse damage
+-- timer.lua — State machine for biome tracking, countdown, and curse damage
 
 local DEBOUNCE_FRAMES = 30  -- 0.5s at 60fps to avoid biome flicker
 
@@ -229,11 +229,10 @@ state_handlers.overtime = function(player, frame, ctx)
 		end
 
 		local base_damage = get_setting("damage_start", 4)  -- display HP at 100 max
-		local escalation = get_setting("damage_escalation", 1)
 		local ticks = tonumber(GlobalsGetValue("NOITREIGN_DAMAGE_TICKS", "0")) or 0
 
-		local damage = base_damage * escalation
-		local internal_damage = (damage / 100.0) * max_hp  -- scale relative to max HP
+		local damage = base_damage * ((ticks // 10) + 1) 
+		local internal_damage = (damage / 100.0) -- * max_hp  -- scale relative to max HP
 
 		local x, y = EntityGetTransform(player)
 		EntityInflictDamage(
