@@ -6,43 +6,6 @@ local function get_setting(key, default)
 	return val
 end
 
--- Reuses the give_perk_to_player pattern from daily_practice
-local function give_perk(perk_id, player)
-	local perk_data = get_perk_with_id(perk_list, perk_id)
-	if perk_data == nil then return end
-
-	-- Progress flags
-	local flag_name = get_perk_picked_flag_name(perk_id)
-	local flag_name_persistent = string.lower(flag_name)
-	if HasFlagPersistent(flag_name_persistent) == false then
-		GameAddFlagRun("new_" .. flag_name_persistent)
-	end
-	GameAddFlagRun(flag_name)
-	AddFlagPersistent(flag_name_persistent)
-
-	-- Apply game effect
-	if perk_data.game_effect ~= nil then
-		local game_effect_comp = GetGameEffectLoadTo(player, perk_data.game_effect, true)
-		if game_effect_comp ~= nil then
-			ComponentSetValue(game_effect_comp, "frames", "-1")
-		end
-	end
-
-	-- Apply perk function
-	if perk_data.func ~= nil then
-		perk_data.func(0, player, "")
-	end
-
-	-- Add UI icon
-	local entity_ui = EntityCreateNew("")
-	EntityAddComponent(entity_ui, "UIIconComponent", {
-		name = perk_data.ui_name,
-		description = perk_data.ui_description,
-		icon_sprite_file = perk_data.ui_icon,
-	})
-	EntityAddChild(player, entity_ui)
-end
-
 -- Build filtered perk pool: default-pool perks the player doesn't already have
 function noitreign_build_perk_pool(player)
 	local pool = {}
@@ -65,17 +28,21 @@ function noitreign_rewards_check(player)
 	local state = GlobalsGetValue("NOITREIGN_STATE", "counting_down")
 	if state ~= "safe_zone" and state ~= "overtime_safe" then return end
 
-	-- Guard: one reward per holy mountain (keyed to workshop position)
+	-- Guard: one reward per holy mountain (keyed to workshop entity ID)
 	local workshop_key = GlobalsGetValue("NOITREIGN_CURRENT_WORKSHOP_KEY", "")
 	if workshop_key == "" then return end
-	if granted_workshops[workshop_key] then return end
 	local grant_key = "NOITREIGN_HM_GRANTED_" .. workshop_key
+	-- DEBUG: remove after confirming fix
+	-- GamePrint("Noitreign DEBUG: key=" .. workshop_key
+	-- 	.. " lua=" .. tostring(granted_workshops[workshop_key] or false)
+	-- 	.. " global=" .. GlobalsGetValue(grant_key, "0"))
+	if granted_workshops[workshop_key] then return end
 	if GlobalsGetValue(grant_key, "0") == "1" then return end
 	granted_workshops[workshop_key] = true
 	GlobalsSetValue(grant_key, "1")
 
 	-- HP Boost
-	local bonus_hp = get_setting("bonus_hp", 50)
+	local bonus_hp = get_setting("bonus_hp", 40)
 	if bonus_hp > 0 then
 		local internal_hp = bonus_hp / 25.0
 		local damagemodels = EntityGetComponent(player, "DamageModelComponent")
@@ -95,11 +62,18 @@ function noitreign_rewards_check(player)
 		if #pool > 0 then
 			SetRandomSeed(GameGetFrameNum(), GameGetFrameNum() * 137)
 			local chosen_id = pool[Random(1, #pool)]
-			give_perk(chosen_id, player)
+
+			local px, py = EntityGetTransform(player)
+			local perk_entity = perk_spawn(px + 32, py - 32, chosen_id, true)
+			EntityRemoveTag(perk_entity, "perk")
+
+			-- We want it to fall -- give it physics components
+			EntityAddComponent2(perk_entity, "VelocityComponent")
+			EntityAddComponent2(perk_entity, "SimplePhysicsComponent")
 
 			local perk_data = get_perk_with_id(perk_list, chosen_id)
 			local name = perk_data and perk_data.ui_name or chosen_id
-			GamePrint("Noitreign: Perk granted — " .. name)
+			GamePrint("Noitreign: Perk available — " .. name)
 		end
 	end
 end

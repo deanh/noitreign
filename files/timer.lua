@@ -53,8 +53,7 @@ local function get_workshop_key(player)
 	if workshop == nil or workshop == 0 then return nil, nil end
 	local wx, wy = EntityGetTransform(workshop)
 	if wx == nil then return nil, nil end
-	local key = tostring(math.floor(wx / 10)) .. "_" .. tostring(math.floor(wy / 10))
-	return key, wy
+	return tostring(workshop), wy
 end
 
 -- Visited biomes: comma-separated string in Globals
@@ -228,10 +227,10 @@ state_handlers.overtime = function(player, frame, ctx)
 			max_hp = ComponentGetValue2(damagemodels[1], "max_hp")
 		end
 
-		local base_damage = get_setting("damage_start", 4)  -- display HP at 100 max
+		local base_damage = get_setting("damage_start", 6)  -- display HP at 100 max
 		local ticks = tonumber(GlobalsGetValue("NOITREIGN_DAMAGE_TICKS", "0")) or 0
 
-		local damage = base_damage * (math.floor(ticks / 10) + 1)
+		local damage = base_damage * (math.floor(ticks / 5) + 1)
 		local internal_damage = (damage / 100.0) -- * max_hp  -- scale relative to max HP
 
 		local x, y = EntityGetTransform(player)

@@ -32,24 +32,40 @@ function noitreign_gui_update(player)
 			text = text .. " [x" .. tostring(ticks) .. "]"
 		end
 
-	elseif state == "safe_zone" then
-		-- Holy Mountain: show frozen timer in white
-		local minutes = math.floor(remaining / 60)
-		local seconds = math.floor(remaining % 60)
-		text = string.format("%d:%02d (HM)", minutes, seconds)
-		r, g, b = 1, 1, 1
-
-	else -- counting_down (and fallback)
-		local minutes = math.floor(remaining / 60)
-		local seconds = math.floor(remaining % 60)
-		text = string.format("%d:%02d", minutes, seconds)
-
-		if remaining > 60 then
-			r, g, b = 0.2, 1, 0.2  -- green
-		elseif remaining > 30 then
-			r, g, b = 1, 1, 0.2    -- yellow
+		-- Screen effect: desaturation + red tint during active overtime (not safe)
+		if state == "overtime" then
+			local intensity = math.min(math.sqrt(ticks / 20), 1.0)
+			local desat = 0.15 + intensity * 0.45
+			local cr = 1.0 - intensity * 0.3
+			local cg = 1.0 - intensity * 0.7
+			local cb = 1.0 - intensity * 0.7
+			GameSetPostFxParameter("color_grading", cr, cg, cb, desat)
 		else
-			r, g, b = 1, 0.2, 0.2  -- red
+			GameUnsetPostFxParameter("color_grading")
+		end
+
+	else
+		GameUnsetPostFxParameter("color_grading")
+
+		if state == "safe_zone" then
+			-- Holy Mountain: show frozen timer in white
+			local minutes = math.floor(remaining / 60)
+			local seconds = math.floor(remaining % 60)
+			text = string.format("%d:%02d (HM)", minutes, seconds)
+			r, g, b = 1, 1, 1
+
+		else -- counting_down (and fallback)
+			local minutes = math.floor(remaining / 60)
+			local seconds = math.floor(remaining % 60)
+			text = string.format("%d:%02d", minutes, seconds)
+
+			if remaining > 60 then
+				r, g, b = 0.2, 1, 0.2  -- green
+			elseif remaining > 30 then
+				r, g, b = 1, 1, 0.2    -- yellow
+			else
+				r, g, b = 1, 0.2, 0.2  -- red
+			end
 		end
 	end
 

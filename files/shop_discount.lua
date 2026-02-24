@@ -1,10 +1,8 @@
-local _noitreign_orig_shop_item = generate_shop_item
-function generate_shop_item(x, y, cheap_item, biomeid_, is_stealable)
-    local eid = _noitreign_orig_shop_item(x, y, cheap_item, biomeid_, is_stealable)
-    if eid == nil then return eid end
+local function apply_discount(eid)
+    if eid == nil then return end
 
     local discount = ModSettingGet("noitreign.shop_discount") or 50
-    if discount <= 0 then return eid end
+    if discount <= 0 then return end
 
     -- Adjust cost
     local cost_comps = EntityGetComponentIncludingDisabled(eid, "ItemCostComponent")
@@ -17,7 +15,7 @@ function generate_shop_item(x, y, cheap_item, biomeid_, is_stealable)
     end
 
     -- Update price display
-    local sprites = EntityGetComponentIncludingDisabled(eid, "SpriteComponent") 
+    local sprites = EntityGetComponentIncludingDisabled(eid, "SpriteComponent")
     if sprites then
         for _, comp in ipairs(sprites) do
             local tags = ComponentGetValue2(comp, "_tags") or ""
@@ -29,7 +27,18 @@ function generate_shop_item(x, y, cheap_item, biomeid_, is_stealable)
             end
         end
     end
+end
 
+local _noitreign_orig_shop_item = generate_shop_item
+function generate_shop_item(x, y, cheap_item, biomeid_, is_stealable)
+    local eid = _noitreign_orig_shop_item(x, y, cheap_item, biomeid_, is_stealable)
+    apply_discount(eid)
     return eid
 end
 
+local _noitreign_orig_shop_wand = generate_shop_wand
+function generate_shop_wand(x, y, cheap_item, biomeid_)
+    local eid = _noitreign_orig_shop_wand(x, y, cheap_item, biomeid_)
+    apply_discount(eid)
+    return eid
+end
