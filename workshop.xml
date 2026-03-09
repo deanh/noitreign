@@ -1,0 +1,8 @@
+<Mod
+    name="Noitreign"
+    description="Nightreign inspired time pressure. Putterers beware!"
+    tags="game modes, tweaks"
+    dont_upload_folders=".claude"
+    dont_upload_files=""
+    >
+</Mod>
