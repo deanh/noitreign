@@ -30,6 +30,10 @@ local function is_trackable_biome(biome_name)
 	return true
 end
 
+local function is_boss_arena(biome_name)
+	return string.find(biome_name, "boss_arena") ~= nil
+end
+
 -- Workshop detection: "workshop" entities only exist in HM interior
 -- Distance-gated so a surviving (non-collapsed) workshop doesn't trap the player in safe_zone
 local WORKSHOP_MAX_DIST_SQ = 300 * 300  -- ~300 px radius
@@ -183,12 +187,22 @@ state_handlers.counting_down = function(player, frame, ctx)
 		GlobalsSetValue("NOITREIGN_CURRENT_WORKSHOP_Y", tostring(wy or 0))
 		return "safe_zone"
 	elseif ctx.biome_changed and not ctx.is_backtrack then
-		-- Direct biome → biome: add bonus time to remaining
-		local bonus = get_setting("biome_bonus_seconds", 90)
-		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
-		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(remaining + bonus))
-		GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
-		GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
+		-- Boss arena: full timer reset (boss fight needs full time)
+		if is_boss_arena(ctx.new_biome) then
+			local timer_seconds = get_setting("timer_seconds", 120)
+			lobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
+			GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(timer_seconds))
+			GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
+			GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
+			GamePrint("Noitreign: Boss arena — full time!")
+		else
+			-- Direct biome → biome: add bonus time to remaining
+			local bonus = get_setting("biome_bonus_seconds", 90)
+			GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
+			GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(remaining + bonus))
+			GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
+			GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
+		end
 	end
 
 	return "counting_down"
@@ -206,13 +220,18 @@ state_handlers.overtime = function(player, frame, ctx)
 		return "overtime_safe"
 	end
 
-	-- Biome change during overtime = reprieve with bonus time (new biomes only)
+	-- Biome change during overtime = reprieve (new biomes only)
 	if ctx.biome_changed and not ctx.is_backtrack then
 		local bonus = get_setting("biome_bonus_seconds", 90)
+		local timer = bonus
+		-- Boss arena: full timer reset
+		if is_boss_arena(ctx.new_biome) then
+			timer = get_setting("timer_seconds", 120)
+		end
 		GlobalsSetValue("NOITREIGN_DAMAGE_TICKS", "0")
 		GlobalsSetValue("NOITREIGN_LAST_DAMAGE_FRAME", "0")
 		GlobalsSetValue("NOITREIGN_TIMER_START_FRAME", tostring(frame))
-		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(bonus))
+		GlobalsSetValue("NOITREIGN_CURRENT_TIMER", tostring(timer))
 		return "counting_down"
 	end
 
