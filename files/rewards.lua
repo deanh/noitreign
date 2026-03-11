@@ -64,12 +64,14 @@ function noitreign_rewards_check(player)
 			local chosen_id = pool[Random(1, #pool)]
 
 			local px, py = EntityGetTransform(player)
-			local perk_entity = perk_spawn(px + 32, py - 32, chosen_id, true)
+			local workshop = EntityGetClosestWithTag(px, py, "workshop")
+			local wx, wy = EntityGetTransform(workshop)
+			local perk_entity = perk_spawn(wx - 256, wy, chosen_id, true)
 			EntityRemoveTag(perk_entity, "perk")
 
-			-- We want it to fall -- give it physics components
-			EntityAddComponent2(perk_entity, "VelocityComponent")
-			EntityAddComponent2(perk_entity, "SimplePhysicsComponent")
+			-- If we want it to fall -- give it physics components
+			-- EntityAddComponent2(perk_entity, "VelocityComponent")
+			-- EntityAddComponent2(perk_entity, "SimplePhysicsComponent")
 
 			local perk_data = get_perk_with_id(perk_list, chosen_id)
 			local name = perk_data and perk_data.ui_name or chosen_id
